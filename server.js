@@ -7,151 +7,20 @@ import multer from 'multer';
 import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import helmet from 'helmet';
-
-const __filename=fileURLToPath(import.meta.url);
-const __dirname=path.dirname(__filename);
-const app=express();
-const PORT=process.env.PORT||3000;
-
-const dataDir=path.join(__dirname,'data');
-fs.mkdirSync(dataDir,{recursive:true});
-const db=new Database(path.join(dataDir,'universe.db'));
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- username TEXT UNIQUE NOT NULL,
- password_hash TEXT NOT NULL,
- role TEXT NOT NULL CHECK(role IN ('master','agent','player','cashier')),
- full_name TEXT NOT NULL,
- email TEXT DEFAULT '',
- balance INTEGER NOT NULL DEFAULT 0,
- active INTEGER NOT NULL DEFAULT 1,
- avatar_data TEXT DEFAULT '',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS ledger(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- user_id INTEGER NOT NULL,
- actor_id INTEGER,
- kind TEXT NOT NULL CHECK(kind IN ('credit','debit','adjustment')),
- amount INTEGER NOT NULL,
- note TEXT DEFAULT '',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(user_id) REFERENCES users(id)
-);
-CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id);
-`);
-
-if(!db.prepare('SELECT COUNT(*) c FROM users').get().c){
- const i=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,balance) VALUES(?,?,?,?,?,?)');
- i.run('masteradmin',bcrypt.hashSync('demo1234',10),'master','Universe Master','master@universe.demo',0);
- i.run('agente01',bcrypt.hashSync('demo1234',10),'agent','Agente Demo','agent@universe.demo',250000);
- i.run('jugador01',bcrypt.hashSync('demo1234',10),'player','Jugador Demo','player@universe.demo',50000);
- i.run('cajero01',bcrypt.hashSync('demo1234',10),'cashier','Cajero Demo','cashier@universe.demo',100000);
-}
-
-app.use(helmet({contentSecurityPolicy:false}));
-app.use(express.json({limit:'3mb'}));
-app.use(express.urlencoded({extended:true,limit:'3mb'}));
-app.use(session({
- secret:process.env.SESSION_SECRET||'universe-demo-session',
- resave:false,
- saveUninitialized:false,
- cookie:{httpOnly:true,sameSite:'lax',secure:false,maxAge:28800000}
-}));
-app.use(express.static(path.join(__dirname,'public')));
-
-const upload=multer({
- storage:multer.memoryStorage(),
- limits:{fileSize:1536000},
- fileFilter:(_r,f,cb)=>cb(null,/^image\/(png|jpe?g|webp|gif)$/i.test(f.mimetype))
-});
-
-const currentUser=req=>req.session.userId?db.prepare('SELECT id,username,role,full_name,email,balance,active,avatar_data,created_at FROM users WHERE id=?').get(req.session.userId):null;
-const auth=(req,res,next)=>{const u=currentUser(req);if(!u||!u.active)return res.status(401).json({error:'No autenticado.'});req.user=u;next()};
-const staff=(req,res,next)=>auth(req,res,()=>['master','agent','cashier'].includes(req.user.role)?next():res.status(403).json({error:'Sin permisos.'}));
-const amount=v=>{const n=Number(v);if(!Number.isInteger(n)||n<=0||n>1000000000)throw Error('Monto inválido.');return n};
-
-app.get('/api/health',(_q,s)=>s.json({ok:true,service:'universe-portal-prototype'}));
-app.get('/api/session',(q,s)=>s.json({user:currentUser(q)}));
-
-app.post('/api/login',(q,s)=>{
- const {username='',password=''}=q.body||{};
- const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());
- if(!u||!u.active||!bcrypt.compareSync(String(password),u.password_hash))return s.status(401).json({error:'Usuario o contraseña incorrectos.'});
- q.session.userId=u.id;
- s.json({ok:true,redirect:u.role==='player'?'/player.html':'/master.html',user:currentUser(q)});
-});
-app.post('/api/logout',(q,s)=>q.session.destroy(()=>s.json({ok:true})));
-
-app.get('/api/stats',staff,(q,s)=>{
- const players=db.prepare("SELECT COUNT(*) c FROM users WHERE role='player'").get().c;
- const agents=db.prepare("SELECT COUNT(*) c FROM users WHERE role='agent'").get().c;
- const cashiers=db.prepare("SELECT COUNT(*) c FROM users WHERE role='cashier'").get().c;
- const active=db.prepare("SELECT COUNT(*) c FROM users WHERE active=1 AND role IN ('player','agent','cashier')").get().c;
- const volume=db.prepare("SELECT COALESCE(SUM(CASE WHEN kind='credit' THEN amount WHEN kind='debit' THEN -amount ELSE 0 END),0) v FROM ledger").get().v;
- s.json({players,agents,cashiers,active,ledgerVolume:volume});
-});
-
+const __filename=fileURLToPath(import.meta.url);const __dirname=path.dirname(__filename);const app=express();const PORT=process.env.PORT||3000;
+const dataDir=path.join(__dirname,'data');fs.mkdirSync(dataDir,{recursive:true});const db=new Database(path.join(dataDir,'universe.db'));db.pragma('journal_mode = WAL');
+db.exec(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('master','agent','player','cashier')),full_name TEXT NOT NULL,email TEXT DEFAULT '',balance INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,avatar_data TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,actor_id INTEGER,kind TEXT NOT NULL CHECK(kind IN ('credit','debit','adjustment')),amount INTEGER NOT NULL,note TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id);`);
+if(!db.prepare('SELECT COUNT(*) c FROM users').get().c){const i=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,balance) VALUES(?,?,?,?,?,?)');i.run('masteradmin',bcrypt.hashSync('demo1234',10),'master','Universe Master','master@universe.demo',0);i.run('agente01',bcrypt.hashSync('demo1234',10),'agent','Agente Demo','agent@universe.demo',250000);i.run('jugador01',bcrypt.hashSync('demo1234',10),'player','Jugador Demo','player@universe.demo',50000);i.run('cajero01',bcrypt.hashSync('demo1234',10),'cashier','Cajero Demo','cashier@universe.demo',100000);}
+app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:'3mb'}));app.use(express.urlencoded({extended:true,limit:'3mb'}));app.use(session({secret:process.env.SESSION_SECRET||'universe-demo-session',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:false,maxAge:28800000}}));app.use(express.static(path.join(__dirname,'public')));
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:1536000},fileFilter:(_r,f,cb)=>cb(null,/^image\/(png|jpe?g|webp|gif)$/i.test(f.mimetype))});
+const currentUser=req=>req.session.userId?db.prepare('SELECT id,username,role,full_name,email,balance,active,avatar_data,created_at FROM users WHERE id=?').get(req.session.userId):null;const auth=(req,res,next)=>{const u=currentUser(req);if(!u||!u.active)return res.status(401).json({error:'No autenticado.'});req.user=u;next()};const staff=(req,res,next)=>auth(req,res,()=>['master','agent','cashier'].includes(req.user.role)?next():res.status(403).json({error:'Sin permisos.'}));const amount=v=>{const n=Number(v);if(!Number.isInteger(n)||n<=0||n>1000000000)throw Error('Monto inválido.');return n};
+app.get('/api/health',(_q,s)=>s.json({ok:true,service:'universe-portal-prototype'}));app.get('/api/session',(q,s)=>s.json({user:currentUser(q)}));
+app.post('/api/login',(q,s)=>{const {username='',password=''}=q.body||{};const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());if(!u||!u.active||!bcrypt.compareSync(String(password),u.password_hash))return s.status(401).json({error:'Usuario o contraseña incorrectos.'});q.session.userId=u.id;s.json({ok:true,redirect:u.role==='player'?'/player.html':'/master.html',user:currentUser(q)});});app.post('/api/logout',(q,s)=>q.session.destroy(()=>s.json({ok:true})));
+app.get('/api/stats',staff,(q,s)=>{const players=db.prepare("SELECT COUNT(*) c FROM users WHERE role='player'").get().c;const agents=db.prepare("SELECT COUNT(*) c FROM users WHERE role='agent'").get().c;const cashiers=db.prepare("SELECT COUNT(*) c FROM users WHERE role='cashier'").get().c;const active=db.prepare("SELECT COUNT(*) c FROM users WHERE active=1 AND role IN ('player','agent','cashier')").get().c;const volume=db.prepare("SELECT COALESCE(SUM(CASE WHEN kind='credit' THEN amount WHEN kind='debit' THEN -amount ELSE 0 END),0) v FROM ledger").get().v;s.json({players,agents,cashiers,active,ledgerVolume:volume});});
 app.get('/api/users',staff,(q,s)=>s.json({users:db.prepare("SELECT id,username,role,full_name,email,balance,active,avatar_data,created_at FROM users WHERE role!='master' ORDER BY id DESC").all()}));
-
-app.post('/api/users',staff,upload.single('avatar'),(q,s)=>{
- const {username,password,role='player',full_name,email=''}=q.body;
- if(!['player','agent','cashier'].includes(role))return s.status(400).json({error:'Rol inválido.'});
- if(!username||!password||!full_name)return s.status(400).json({error:'Completá usuario, contraseña y nombre.'});
- try{
-  const avatar=q.file?`data:${q.file.mimetype};base64,${q.file.buffer.toString('base64')}`:'';
-  const x=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,avatar_data) VALUES(?,?,?,?,?,?)').run(String(username).trim(),bcrypt.hashSync(String(password),10),role,String(full_name).trim(),String(email).trim(),avatar);
-  s.json({ok:true,id:x.lastInsertRowid});
- }catch(e){s.status(400).json({error:e.message.includes('UNIQUE')?'Ese usuario ya existe.':'No se pudo crear el usuario.'});}
-});
-
-app.patch('/api/users/:id',staff,upload.single('avatar'),(q,s)=>{
- const id=Number(q.params.id),t=db.prepare('SELECT * FROM users WHERE id=?').get(id);
- if(!t)return s.status(404).json({error:'Usuario no encontrado.'});
- const active=q.body.active==null?t.active:(q.body.active==='true'||q.body.active==='1'?1:0);
- const avatar=q.file?`data:${q.file.mimetype};base64,${q.file.buffer.toString('base64')}`:t.avatar_data;
- db.prepare('UPDATE users SET full_name=?,email=?,active=?,avatar_data=? WHERE id=?').run(q.body.full_name??t.full_name,q.body.email??t.email,active,avatar,id);
- s.json({ok:true});
-});
-
-app.post('/api/wallet/transfer',staff,(q,s)=>{
- try{
-  const userId=Number(q.body.userId),a=amount(q.body.amount),action=q.body.action;
-  const t=db.prepare('SELECT id,balance,active FROM users WHERE id=?').get(userId);
-  if(!t||!t.active)return res.status(404).json({error:'Usuario no encontrado o inactivo.'});
-  if(!['credit','debit'].includes(action))return s.status(400).json({error:'Movimiento inválido.'});
-  const next=db.transaction(()=>{
-   const nb=t.balance+(action==='credit'?a:-a);
-   if(nb<0)throw Error('Saldo insuficiente para retirar esa cantidad.');
-   db.prepare('UPDATE users SET balance=? WHERE id=?').run(nb,userId);
-   db.prepare('INSERT INTO ledger(user_id,actor_id,kind,amount,note) VALUES(?,?,?,?,?)').run(userId,q.user.id,action,a,String(q.body.note|| (action==='credit'?'Carga de fichas':'Retiro de fichas')));
-   return nb;
-  })();
-  s.json({ok:true,balance:next});
- }catch(e){s.status(400).json({error:e.message});}
-});
-
-app.get('/api/ledger',staff,(q,s)=>s.json({ledger:db.prepare('SELECT l.id,l.kind,l.amount,l.note,l.created_at,u.username,u.full_name FROM ledger l JOIN users u ON u.id=l.user_id ORDER BY l.id DESC LIMIT 100').all()}));
-app.get('/api/me/ledger',auth,(q,s)=>s.json({ledger:db.prepare('SELECT id,kind,amount,note,created_at FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 50').all(q.user.id)}));
-
-app.post('/api/demo/game',auth,(q,s)=>{
- try{
-  if(q.user.role!=='player')return s.status(403).json({error:'Solo jugadores.'});
-  const a=amount(q.body.bet||100),fresh=db.prepare('SELECT balance FROM users WHERE id=?').get(q.user.id);
-  if(fresh.balance<a)return s.status(400).json({error:'Saldo demo insuficiente.'});
-  const win=Math.random()>0.55,delta=win?a:-a;
-  const nb=db.transaction(()=>{
-   const b=db.prepare('SELECT balance FROM users WHERE id=?').get(q.user.id).balance+delta;
-   db.prepare('UPDATE users SET balance=? WHERE id=?').run(b,q.user.id);
-   db.prepare('INSERT INTO ledger(user_id,actor_id,kind,amount,note) VALUES(?,?,?,?,?)').run(q.user.id,q.user.id,delta>0?'credit':'debit',Math.abs(delta),win?'Demo: resultado ganador':'Demo: resultado perdedor');
-   return b;
-  })();
-  s.json({ok:true,outcome:win?'ganaste':'perdiste',delta,balance:nb});
- }catch(e){s.status(400).json({error:e.message});}
-});
-
-app.use((q,s,n)=>q.path.startsWith('/api/')?s.status(404).json({error:'Ruta API no encontrada.'}):s.sendFile(path.join(__dirname,'public','index.html'),e=>e&&n(e)));
-app.listen(PORT,'0.0.0.0',()=>console.log(`Universe Portal running on ${PORT}`));
+app.post('/api/users',staff,upload.single('avatar'),(q,s)=>{const {username,password,role='player',full_name,email=''}=q.body;if(!['player','agent','cashier'].includes(role))return s.status(400).json({error:'Rol inválido.'});if(!username||!password||!full_name)return s.status(400).json({error:'Completá usuario, contraseña y nombre.'});try{const avatar=q.file?`data:${q.file.mimetype};base64,${q.file.buffer.toString('base64')}`:'';const x=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,avatar_data) VALUES(?,?,?,?,?,?)').run(String(username).trim(),bcrypt.hashSync(String(password),10),role,String(full_name).trim(),String(email).trim(),avatar);s.json({ok:true,id:x.lastInsertRowid});}catch(e){s.status(400).json({error:e.message.includes('UNIQUE')?'Ese usuario ya existe.':'No se pudo crear el usuario.'});}});
+app.patch('/api/users/:id',staff,upload.single('avatar'),(q,s)=>{const id=Number(q.params.id),t=db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!t)return s.status(404).json({error:'Usuario no encontrado.'});const active=q.body.active==null?t.active:(q.body.active==='true'||q.body.active==='1'?1:0);const avatar=q.file?`data:${q.file.mimetype};base64,${q.file.buffer.toString('base64')}`:t.avatar_data;db.prepare('UPDATE users SET full_name=?,email=?,active=?,avatar_data=? WHERE id=?').run(q.body.full_name??t.full_name,q.body.email??t.email,active,avatar,id);s.json({ok:true});});
+app.post('/api/wallet/transfer',staff,(q,s)=>{try{const userId=Number(q.body.userId),a=amount(q.body.amount),action=q.body.action,t=db.prepare('SELECT id,balance,active FROM users WHERE id=?').get(userId);if(!t||!t.active)return s.status(404).json({error:'Usuario no encontrado o inactivo.'});if(!['credit','debit'].includes(action))return s.status(400).json({error:'Movimiento inválido.'});const next=db.transaction(()=>{const nb=t.balance+(action==='credit'?a:-a);if(nb<0)throw Error('Saldo insuficiente para retirar esa cantidad.');db.prepare('UPDATE users SET balance=? WHERE id=?').run(nb,userId);db.prepare('INSERT INTO ledger(user_id,actor_id,kind,amount,note) VALUES(?,?,?,?,?)').run(userId,q.user.id,action,a,String(q.body.note|| (action==='credit'?'Carga de fichas':'Retiro de fichas')));return nb;})();s.json({ok:true,balance:next});}catch(e){s.status(400).json({error:e.message});}});
+app.get('/api/ledger',staff,(q,s)=>s.json({ledger:db.prepare('SELECT l.id,l.kind,l.amount,l.note,l.created_at,u.username,u.full_name FROM ledger l JOIN users u ON u.id=l.user_id ORDER BY l.id DESC LIMIT 100').all()}));app.get('/api/me/ledger',auth,(q,s)=>s.json({ledger:db.prepare('SELECT id,kind,amount,note,created_at FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 50').all(q.user.id)}));
+app.post('/api/demo/game',auth,(q,s)=>{try{if(q.user.role!=='player')return s.status(403).json({error:'Solo jugadores.'});const a=amount(q.body.bet||100),fresh=db.prepare('SELECT balance FROM users WHERE id=?').get(q.user.id);if(fresh.balance<a)return s.status(400).json({error:'Saldo demo insuficiente.'});const win=Math.random()>0.55,delta=win?a:-a;const nb=db.transaction(()=>{const b=db.prepare('SELECT balance FROM users WHERE id=?').get(q.user.id).balance+delta;db.prepare('UPDATE users SET balance=? WHERE id=?').run(b,q.user.id);db.prepare('INSERT INTO ledger(user_id,actor_id,kind,amount,note) VALUES(?,?,?,?,?)').run(q.user.id,q.user.id,delta>0?'credit':'debit',Math.abs(delta),win?'Demo: resultado ganador':'Demo: resultado perdedor');return b;})();s.json({ok:true,outcome:win?'ganaste':'perdiste',delta,balance:nb});}catch(e){s.status(400).json({error:e.message});}});
+app.use((q,s,n)=>q.path.startsWith('/api/')?s.status(404).json({error:'Ruta API no encontrada.'}):s.sendFile(path.join(__dirname,'public','index.html'),e=>e&&n(e)));app.listen(PORT,'0.0.0.0',()=>console.log(`Universe Portal running on ${PORT}`));
