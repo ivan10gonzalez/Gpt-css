@@ -1,0 +1,6 @@
+const form=document.getElementById('accessForm'),error=document.getElementById('accessError'),submit=document.getElementById('submitAccess');
+const destination=u=>u.role==='player'?'/player.html':'/master.html';
+fetch('/api/session').then(r=>r.json()).then(d=>{if(d.user?.active)location.replace(destination(d.user))}).catch(()=>{});
+fetch('/api/site').then(r=>r.json()).then(d=>{document.querySelectorAll('[data-brand]').forEach(x=>x.textContent=d.settings.name);document.title=d.settings.name+' · Ingresar';document.body.style.setProperty('--accent',d.settings.accent)}).catch(()=>{});
+document.getElementById('showPassword').onclick=e=>{const p=form.elements.password,show=p.type==='password';p.type=show?'text':'password';e.target.textContent=show?'Ocultar':'Ver';e.target.setAttribute('aria-label',show?'Ocultar contraseña':'Mostrar contraseña')};
+form.onsubmit=async e=>{e.preventDefault();submit.disabled=true;error.textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))}),d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo ingresar.');location.assign(d.redirect)}catch(e){error.textContent=e.message||'No se pudo conectar. Intentá nuevamente.'}finally{submit.disabled=false}};

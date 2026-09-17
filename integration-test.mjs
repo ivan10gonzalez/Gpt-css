@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const base='http://localhost:3000';
+const base=process.env.TEST_BASE_URL||'http://localhost:3000';
 async function client(username){let cookie='';async function call(path,method='GET',data){const r=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(data&&!(data instanceof FormData)?{'Content-Type':'application/json'}:{})},body:data?(data instanceof FormData?data:JSON.stringify(data)):undefined});if(r.headers.get('set-cookie'))cookie=r.headers.get('set-cookie').split(';')[0];return {status:r.status,...await r.json()}}if(username)assert.equal((await call('/api/login','POST',{username,password:'demo1234'})).status,200);return call}
 const master=await client('masteradmin'),player=await client('jugador01'),cashier=await client('cajero01'),guest=await client();
 const initial=(await master('/api/site')).settings;assert.equal((await guest('/api/site','PUT',initial)).status,401);assert.equal((await player('/api/site','PUT',initial)).status,403);assert.equal((await cashier('/api/site','PUT',initial)).status,403);

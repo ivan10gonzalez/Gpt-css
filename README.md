@@ -1,4 +1,4 @@
-# PRISMA · Casino virtual y administración
+# NEXORA · Casino virtual y administración
 
 Modelo full-stack de casino con saldo virtual. No procesa dinero real ni incluye juegos o apuestas: las tarjetas son espacios de catálogo para una futura integración API.
 
@@ -6,7 +6,8 @@ Modelo full-stack de casino con saldo virtual. No procesa dinero real ni incluye
 
 Node 24.14.1 (configuración existente de Render), `npm install`, `npm start`.
 
-- `/` y `/player.html`: casino adaptable a celular, categorías, búsqueda, banners, inicio de sesión, saldo e historial.
+- `/`: pantalla de acceso única. La sesión dirige a jugadores a `/player.html` y al personal a `/master.html`.
+- `/player.html`: casino adaptable a celular, categorías, búsqueda, banners, saldo e historial. Requiere sesión; el personal puede previsualizarlo desde el panel.
 - `/master.html`: administración, usuarios, cargas/retiros, historial, banners y ajustes del casino.
 - Usuarios demo existentes: `masteradmin`, `jugador01`, `agente01`, `cajero01`. Contraseña inicial de la base demo: `demo1234`.
 
@@ -30,6 +31,14 @@ Configurar `SESSION_SECRET` con un valor propio. Las sesiones del prototipo se m
 
 Las secciones casino, casino en vivo y deportes funcionan como navegación y presentación. No se conecta ningún proveedor ni se simulan partidos, cuotas o resultados. La integración futura requiere catálogo, autenticación del proveedor y sus endpoints de lanzamiento y wallet. Activar una categoría solo la hace visible, no conecta un proveedor.
 
+## Versión visual NEXORA
+
+Portada de acceso, lobby con 14 categorías ilustradas originales, navegación inferior móvil y diseño adaptable a 360 px, 390 px, tablet y escritorio. Las tarjetas informan “Próximamente”; no lanzan juegos, aceptan apuestas ni simulan cuotas. Se mantienen los datos y ajustes existentes, incluido el nombre personalizado; NEXORA es el valor inicial de una base nueva.
+
+El servidor verifica la sesión antes de entregar las páginas del casino y administración. Los jugadores no acceden al panel; las APIs conservan sus controles de rol. El saldo se actualiza al volver a la pestaña y cada 30 segundos. No se realizó despliegue de producción.
+
 ## Verificación
 
 Con servidor local iniciado, `node integration-test.mjs` comprueba permisos, publicación de banners, ajustes, mantenimiento, cargas/retiros e insuficiencia de saldo. Ejecutar únicamente contra una base demo, ya que registra movimientos de prueba.
+
+Prueba de navegador: instalar Playwright en el entorno de pruebas (`npm install --no-save playwright` y `npx playwright install chromium`) y ejecutar `TEST_BASE_URL=http://localhost:3100 node tests/browser.mjs` contra un servidor iniciado con `DATA_DIR` temporal y `PORT=3100`. Opcional: `CHROMIUM_PATH` para un navegador ya instalado. Prueba accesos por rol, permisos de páginas, búsqueda, móvil, creación de usuarios, cargas/retiros, banners y configuración. Genera capturas en `/tmp/nexora-*.png`. Usa solamente una base demo: crea un usuario, registra movimientos y elimina los banners de prueba.
