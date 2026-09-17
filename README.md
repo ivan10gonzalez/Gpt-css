@@ -2,11 +2,11 @@
 
 Nueva versión visual sobre el trabajo existente de PRISMA/NEXORA. Casino, casino en vivo y deportes son categorías ilustradas, sin juegos, proveedores, cuotas ni apuestas. Todos los saldos son fichas virtuales.
 
-## Estado de entrega
+## Corrección de acceso en el modelo actual
 
-El código de revisión se entrega en el PR #1, rama `feat/nexora-role-lobby`. Mientras ese PR siga abierto, `main` conserva la versión anterior. No se realizó un despliegue a Render ni se cambió su configuración. Tener el nombre NEXORA en el sitio anterior no significa que ese PR esté publicado.
+El inicio normal (`npm start`) ahora crea automáticamente las dos cuentas de prueba que falten en la misma base que usa el servicio. Esta provisión está autorizada para este modelo con fichas virtuales. Funciona también con `NODE_ENV=production` (modo de ejecución de Node que suele usar Render). No requiere otro servicio, otra base ni variables nuevas.
 
-Después de fusionar el PR, un servicio configurado para desplegar automáticamente `main` podrá tomarlo; hay que comprobar su rama configurada y el commit desplegado. Para revisión sin tocar producción, usar un servicio demo separado con la rama del PR. No se conoce una URL de Render verificada: no se proporciona un enlace inventado.
+Después de desplegar la corrección de `main`, abrir `/` e iniciar sesión con las cuentas de abajo. No se ha verificado una URL ni una base de Render: las pruebas de provisión y login se realizaron localmente.
 
 ## Entrada y roles reales
 
@@ -19,49 +19,37 @@ Después de fusionar el PR, un servicio configurado para desplegar automáticame
 
 El servidor autentica contraseña mediante bcrypt y usa el rol guardado en SQLite, no un selector del navegador. Las rutas y las APIs tienen controles de sesión/rol. Se conserva el login regenerando la sesión, se evita almacenar páginas de cuenta en caché y se invalida la sesión al salir. Los usuarios bloqueados pierden acceso. Las sesiones de este modelo siguen en memoria y expiran al reiniciar el proceso.
 
-## Dos cuentas exclusivamente de demostración
-
-Estas cuentas se crean solo con el arranque demo explícito y en una base nueva:
+## Cuentas de prueba y activación
 
 | Acceso | Usuario | Contraseña | Destino |
 | --- | --- | --- | --- |
 | Jugador | `demo_jugador` | `BravoJuega!26` | `/casino` |
 | Administrador | `demo_admin` | `BravoPanel!26` | `/admin` |
 
-Verificadas localmente con pruebas de navegador y servidor. No verificadas ni activadas en Render. Son credenciales públicas de demostración: usar únicamente en un entorno separado para fichas virtuales, nunca sobre una base real.
+Son credenciales públicas exclusivamente para recorrer este modelo de fichas virtuales. Están verificadas localmente en bases vacías y existentes; no se afirma que estén creadas en Render antes de verificar el despliegue.
 
-### Arranque demo local
+**Paso para el servicio actual:** desplegar el último commit de `main` y dejar que arranque con el comando habitual `npm start`. No cambiar `DATA_DIR` ni borrar archivos. Si auto-deploy está habilitado, comprobar que se desplegó el commit de la corrección.
 
-Node 24.14.1 o compatible con las dependencias existentes:
+### Cómo se conservan los datos
 
-```sh
-npm install
-DEMO_MODE=true NODE_ENV=development DATA_DIR=./demo-data npm run demo
-```
+- Solo se insertan nombres de cuenta ausentes. No se borran ni modifican filas existentes.
+- Los reinicios no restablecen contraseñas, saldos, roles o bloqueos. El crédito inicial del jugador nuevo se registra una sola vez en el historial.
+- Si `demo_jugador` o `demo_admin` ya existe con otra contraseña, rol o bloqueo, se conserva íntegramente y el log muestra `CONFLICTO`. Las credenciales publicadas no sustituyen las de esa cuenta. No probar contraseñas al azar: ese caso requiere revisar el conflicto concreto.
+- La provisión ocurre dentro del proceso de arranque, en una transacción, sin endpoint HTTP para crear administradores.
+- Usuarios, fichas, ledger, banners y ajustes de `universe.db` se conservan. `DATA_DIR` mantiene su significado y su valor predeterminado `data/` dentro del proyecto.
 
-Abrir `http://localhost:3000/`. Elegir una carpeta DATA_DIR nueva. El primer inicio crea exactamente las dos cuentas anteriores; los siguientes conservan sus datos. Si la base ya existe y no fue creada por este inicializador de demo, el comando se detiene sin modificarla. No se admite `NODE_ENV=production` para este modo.
+Los logs solo informan `creada`, `ya disponible, sin cambios` o `CONFLICTO`, nunca contraseñas. Si en el futuro se quiere desactivar esta provisión de prueba, configurar `BRAVO_DEMO_ACCOUNTS=false`; esto no elimina las cuentas ya creadas. Esta variable no hace falta para probar el modelo.
 
-### Revisar en un servicio Render separado
-
-Sin tocar el servicio ni disco existentes:
-
-- Repositorio: `ivan10gonzalez/Gpt-css`.
-- Rama de revisión: `feat/nexora-role-lobby`.
-- Build Command: `npm install`.
-- Start Command: `npm run demo`.
-- Variables: `DEMO_MODE=true`, `NODE_ENV=development`, `DATA_DIR` apuntando a una carpeta nueva de demostración y `SESSION_SECRET` con un valor propio.
-- Si se monta un disco persistente nuevo, puede usarse `DATA_DIR=/var/data/bravo-demo`. Sin disco, las fichas y usuarios de la demo pueden perderse al reiniciar.
-
-Una vez desplegado ese servicio, abrir su enlace principal con ruta `/`: debe verse el login. El nombre real del enlace lo proporciona Render. No usar las credenciales de demo hasta activar este modo en ese servicio.
-
-### Continuar con una base existente
+### Comandos
 
 ```sh
 npm install
-DATA_DIR=/ruta/de/la/base/existente SESSION_SECRET=valor-propio npm start
+npm start
 ```
 
-`npm start` no crea ni cambia cuentas demo. Se mantienen `universe.db`, usuarios, contraseñas, saldos, historial y banners. Las tablas faltantes se crean sin borrar las existentes. Los nombres predeterminados heredados PRISMA/NEXORA/VANTA/UNIVERSE GAME se presentan como BRAVO sin reescribir el valor almacenado; cualquier nombre personalizado se conserva. No se cambian permisos ni se resetean contraseñas existentes.
+`npm run seed:demo` permite provisionar las cuentas que falten en la misma base, de forma idempotente. `npm run demo` sigue disponible como alias de arranque. Ya no exigen DEMO_MODE, carpeta vacía ni cambiar NODE_ENV.
+
+Usar un disco persistente en Render para conservar datos entre despliegues y un `SESSION_SECRET` propio. La corrección no cambia esa configuración ni mueve bases.
 
 ## Panel y casino
 
@@ -79,9 +67,12 @@ El color configurable se aplica a indicadores y controles; las ilustraciones y c
 ```sh
 npm install --no-save playwright
 npx playwright install chromium
+npm run test:provision
 npm test
 ```
 
 Opcional: `CHROMIUM_PATH` para Chromium ya instalado, `TEST_PORT` para otro puerto y `EVIDENCE_DIR` para capturas. Las pruebas crean una base temporal aislada y levantan/cerran su propio servidor. No usan la base configurada del usuario.
 
-Cubren: portada con y sin sesión de ambos roles, login incorrecto/correcto, rutas protegidas y alias HTML codificados, cierre de sesión y bloqueo, protección del inicializador demo, creación de usuarios, cargas/retiros/saldo insuficiente, movimientos, banners, personalización, mantenimiento y vistas 360/390/768/1440 px sin errores JavaScript ni desbordes horizontales.
+Cubren: portada con y sin sesión de ambos roles, login incorrecto/correcto, rutas protegidas y alias HTML codificados, cierre de sesión y bloqueo, provisión aditiva idempotente, creación de usuarios, cargas/retiros/saldo insuficiente, movimientos, banners, personalización, mantenimiento y vistas 360/390/768/1440 px sin errores JavaScript ni desbordes horizontales.
+
+`npm run test:provision` valida el arranque en NODE_ENV=production, ambas cuentas y sus destinos, bases vacías/existentes, reinicios, historial y saldo preservados, conflictos sin sobrescritura y desactivación explícita.

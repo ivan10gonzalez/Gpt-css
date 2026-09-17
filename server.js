@@ -1,15 +1,15 @@
+import {openDatabase} from './lib/database.mjs';
+import {provisionDemoAccounts} from './lib/demo-accounts.mjs';
 import express from 'express';
 import path from 'node:path';
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
 import multer from 'multer';
 import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import helmet from 'helmet';
 const __filename=fileURLToPath(import.meta.url);const __dirname=path.dirname(__filename);const app=express();const PORT=process.env.PORT||3000;
-const dataDir=process.env.DATA_DIR||path.join(__dirname,'data');fs.mkdirSync(dataDir,{recursive:true});const db=new Database(path.join(dataDir,'universe.db'));db.pragma('journal_mode = WAL');
-db.exec(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('master','agent','player','cashier')),full_name TEXT NOT NULL,email TEXT DEFAULT '',balance INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,avatar_data TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,actor_id INTEGER,kind TEXT NOT NULL CHECK(kind IN ('credit','debit','adjustment')),amount INTEGER NOT NULL,note TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id);`);
+const db=openDatabase();
+if(process.env.BRAVO_DEMO_ACCOUNTS!=='false')provisionDemoAccounts(db);
 app.use(helmet({contentSecurityPolicy:false}));app.use((q,s,n)=>{if(['POST','PUT','PATCH','DELETE'].includes(q.method)&&q.headers['sec-fetch-site']==='cross-site')return s.status(403).json({error:'Solicitud de otro sitio rechazada.'});n();});app.use(express.json({limit:'3mb'}));app.use(express.urlencoded({extended:true,limit:'3mb'}));app.use(session({secret:process.env.SESSION_SECRET||'prisma-demo-session',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:false,maxAge:28800000}}));// Resolve page access on the server, before serving static assets.
 // HTML and account responses must not be reused after logout or a role change.
 app.use((req,res,next)=>{if(req.path.startsWith('/api/'))res.set('Cache-Control','no-store');next()});

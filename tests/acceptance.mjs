@@ -8,8 +8,7 @@ import {chromium} from 'playwright';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),data=fs.mkdtempSync(path.join(os.tmpdir(),'bravo-test-')),port=process.env.TEST_PORT||'3100',base='http://127.0.0.1:'+port;
 const env={...process.env,DEMO_MODE:'true',NODE_ENV:'test',DATA_DIR:data,PORT:port};
 let seeded=spawnSync(process.execPath,['scripts/seed-demo.mjs'],{cwd:root,env,encoding:'utf8'});assert.equal(seeded.status,0,seeded.stderr);
-const before=fs.readFileSync(path.join(data,'universe.db'));assert.notEqual(spawnSync(process.execPath,['scripts/seed-demo.mjs'],{cwd:root,env}).status,0);assert.deepEqual(fs.readFileSync(path.join(data,'universe.db')),before,'Seeder must never overwrite an existing DB');
-const production=spawnSync(process.execPath,['scripts/seed-demo.mjs'],{cwd:root,env:{...env,NODE_ENV:'production',DATA_DIR:path.join(data,'production')}});assert.notEqual(production.status,0);assert(!fs.existsSync(path.join(data,'production','universe.db')));
+const before=fs.readFileSync(path.join(data,'universe.db'));assert.equal(spawnSync(process.execPath,['scripts/seed-demo.mjs'],{cwd:root,env}).status,0);assert.deepEqual(fs.readFileSync(path.join(data,'universe.db')),before,'Seeder must never overwrite an existing DB');
 const server=spawn(process.execPath,['scripts/start-demo.mjs'],{cwd:root,env,stdio:['ignore','pipe','pipe']});let logs='';server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
 let browser;
 try{
@@ -48,5 +47,5 @@ try{
  await login(player,'/casino');await page.goto(base+'/');await page.locator('#closeExisting').click();await page.locator('#existingSession').waitFor({state:'hidden'});assert.equal((await json('/api/session')).body.user,null);await page.goto(base+'/casino');await page.waitForURL(base+'/login');
  // Blocking an authenticated player revokes page/API access immediately.
  await login(player,'/casino');const separate=await context.browser().newContext();await separate.request.post(base+'/api/login',{data:admin});const users=(await (await separate.request.get(base+'/api/users')).json()).users;const id=users.find(u=>u.username===player.username).id;await separate.request.patch(base+'/api/users/'+id,{form:{active:'false'}});await page.reload();await page.waitForURL(base+'/login');assert.equal((await json('/api/me/ledger')).status,401);await separate.close();
- assert.deepEqual(errors,[]);console.log('PASS: root always login with/without either session; real role redirects; protected aliases and encoded HTML; logout and blocked users; both demo accounts; seed overwrite/production rejection; create user; credit/debit/insufficient balance; ledger; banners; settings; maintenance; responsive 360/390/768/1440; no JS errors.');console.log('Evidence: '+output);
+ assert.deepEqual(errors,[]);console.log('PASS: root always login with/without either session; real role redirects; protected aliases and encoded HTML; logout and blocked users; both demo accounts; idempotent additive seeding; create user; credit/debit/insufficient balance; ledger; banners; settings; maintenance; responsive 360/390/768/1440; no JS errors.');console.log('Evidence: '+output);
 } catch(e){console.error(logs);throw e}finally{if(browser)await browser.close();server.kill();}
