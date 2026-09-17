@@ -1,44 +1,87 @@
-# NEXORA · Casino virtual y administración
+# BRAVO · Casino virtual y administración
 
-Modelo full-stack de casino con saldo virtual. No procesa dinero real ni incluye juegos o apuestas: las tarjetas son espacios de catálogo para una futura integración API.
+Nueva versión visual sobre el trabajo existente de PRISMA/NEXORA. Casino, casino en vivo y deportes son categorías ilustradas, sin juegos, proveedores, cuotas ni apuestas. Todos los saldos son fichas virtuales.
 
-## Inicio
+## Estado de entrega
 
-Node 24.14.1 (configuración existente de Render), `npm install`, `npm start`.
+El código de revisión se entrega en el PR #1, rama `feat/nexora-role-lobby`. Mientras ese PR siga abierto, `main` conserva la versión anterior. No se realizó un despliegue a Render ni se cambió su configuración. Tener el nombre NEXORA en el sitio anterior no significa que ese PR esté publicado.
 
-- `/`: pantalla de acceso única. La sesión dirige a jugadores a `/player.html` y al personal a `/master.html`.
-- `/player.html`: casino adaptable a celular, categorías, búsqueda, banners, saldo e historial. Requiere sesión; el personal puede previsualizarlo desde el panel.
-- `/master.html`: administración, usuarios, cargas/retiros, historial, banners y ajustes del casino.
-- Usuarios demo existentes: `masteradmin`, `jugador01`, `agente01`, `cajero01`. Contraseña inicial de la base demo: `demo1234`.
+Después de fusionar el PR, un servicio configurado para desplegar automáticamente `main` podrá tomarlo; hay que comprobar su rama configurada y el commit desplegado. Para revisión sin tocar producción, usar un servicio demo separado con la rama del PR. No se conoce una URL de Render verificada: no se proporciona un enlace inventado.
 
-## Panel
+## Entrada y roles reales
 
-**Banners** permite subir PNG/JPG/WEBP/GIF de hasta 1,5 MB, con título, descripción, categoría y orden. Se pueden ocultar, publicar y eliminar. Se almacenan en SQLite y se muestran en la portada; varios banners tienen controles de navegación. Recomendación: 1600 × 600 px. El casino consulta los cambios al abrirse, al recuperar el foco y cada 30 segundos.
+| Ruta | Comportamiento |
+| --- | --- |
+| `/`, `/index.html`, `/login`, `/login.html` | Siempre formulario de usuario y contraseña, incluso con sesión anterior. La sesión actual se informa y puede cerrarse. No hay redirección automática desde la portada. |
+| `/casino`, `/player`, `/player.html` | Requiere jugador autenticado; el personal es dirigido al panel. |
+| `/admin`, `/master`, `/master.html` | Requiere personal autenticado; un jugador es devuelto al casino. |
+| `/preview` | Vista del casino exclusiva para personal, con aviso y regreso al panel. |
 
-**Configuración** permite cambiar nombre, frase, anuncio, color de acento, visibilidad de categorías y mantenimiento. Solo el rol master puede modificar banners y ajustes. Agentes y cajeros solo pueden crear y modificar jugadores; no pueden editar personal ni acceder a configuración.
+El servidor autentica contraseña mediante bcrypt y usa el rol guardado en SQLite, no un selector del navegador. Las rutas y las APIs tienen controles de sesión/rol. Se conserva el login regenerando la sesión, se evita almacenar páginas de cuenta en caché y se invalida la sesión al salir. Los usuarios bloqueados pierden acceso. Las sesiones de este modelo siguen en memoria y expiran al reiniciar el proceso.
 
-Se conserva el archivo `data/universe.db` para mantener usuarios y movimientos del prototipo anterior. Las tablas de contenido se crean automáticamente sin borrar datos.
+## Dos cuentas exclusivamente de demostración
 
-## Render y persistencia
+Estas cuentas se crean solo con el arranque demo explícito y en una base nueva:
 
-Root Directory vacío · Build `npm install` · Start `npm start`.
+| Acceso | Usuario | Contraseña | Destino |
+| --- | --- | --- | --- |
+| Jugador | `demo_jugador` | `BravoJuega!26` | `/casino` |
+| Administrador | `demo_admin` | `BravoPanel!26` | `/admin` |
 
-Para conservar usuarios, fichas y banners entre despliegues, montar un disco persistente y configurar `DATA_DIR` con su ruta (por ejemplo `/var/data`). Si ya hay una base existente, copiar `universe.db` a la nueva ruta antes de cambiar `DATA_DIR`. Sin disco persistente, Render puede perder datos al reiniciar o desplegar.
+Verificadas localmente con pruebas de navegador y servidor. No verificadas ni activadas en Render. Son credenciales públicas de demostración: usar únicamente en un entorno separado para fichas virtuales, nunca sobre una base real.
 
-Configurar `SESSION_SECRET` con un valor propio. Las sesiones del prototipo se mantienen en memoria y se cierran al reiniciar. Los accesos iniciales son exclusivamente para demostración, no para un servicio público de producción.
+### Arranque demo local
 
-## Integración futura
+Node 24.14.1 o compatible con las dependencias existentes:
 
-Las secciones casino, casino en vivo y deportes funcionan como navegación y presentación. No se conecta ningún proveedor ni se simulan partidos, cuotas o resultados. La integración futura requiere catálogo, autenticación del proveedor y sus endpoints de lanzamiento y wallet. Activar una categoría solo la hace visible, no conecta un proveedor.
+```sh
+npm install
+DEMO_MODE=true NODE_ENV=development DATA_DIR=./demo-data npm run demo
+```
 
-## Versión visual NEXORA
+Abrir `http://localhost:3000/`. Elegir una carpeta DATA_DIR nueva. El primer inicio crea exactamente las dos cuentas anteriores; los siguientes conservan sus datos. Si la base ya existe y no fue creada por este inicializador de demo, el comando se detiene sin modificarla. No se admite `NODE_ENV=production` para este modo.
 
-Portada de acceso, lobby con 14 categorías ilustradas originales, navegación inferior móvil y diseño adaptable a 360 px, 390 px, tablet y escritorio. Las tarjetas informan “Próximamente”; no lanzan juegos, aceptan apuestas ni simulan cuotas. Se mantienen los datos y ajustes existentes, incluido el nombre personalizado; NEXORA es el valor inicial de una base nueva.
+### Revisar en un servicio Render separado
 
-El servidor verifica la sesión antes de entregar las páginas del casino y administración. Los jugadores no acceden al panel; las APIs conservan sus controles de rol. El saldo se actualiza al volver a la pestaña y cada 30 segundos. No se realizó despliegue de producción.
+Sin tocar el servicio ni disco existentes:
 
-## Verificación
+- Repositorio: `ivan10gonzalez/Gpt-css`.
+- Rama de revisión: `feat/nexora-role-lobby`.
+- Build Command: `npm install`.
+- Start Command: `npm run demo`.
+- Variables: `DEMO_MODE=true`, `NODE_ENV=development`, `DATA_DIR` apuntando a una carpeta nueva de demostración y `SESSION_SECRET` con un valor propio.
+- Si se monta un disco persistente nuevo, puede usarse `DATA_DIR=/var/data/bravo-demo`. Sin disco, las fichas y usuarios de la demo pueden perderse al reiniciar.
 
-Con servidor local iniciado, `node integration-test.mjs` comprueba permisos, publicación de banners, ajustes, mantenimiento, cargas/retiros e insuficiencia de saldo. Ejecutar únicamente contra una base demo, ya que registra movimientos de prueba.
+Una vez desplegado ese servicio, abrir su enlace principal con ruta `/`: debe verse el login. El nombre real del enlace lo proporciona Render. No usar las credenciales de demo hasta activar este modo en ese servicio.
 
-Prueba de navegador: instalar Playwright en el entorno de pruebas (`npm install --no-save playwright` y `npx playwright install chromium`) y ejecutar `TEST_BASE_URL=http://localhost:3100 node tests/browser.mjs` contra un servidor iniciado con `DATA_DIR` temporal y `PORT=3100`. Opcional: `CHROMIUM_PATH` para un navegador ya instalado. Prueba accesos por rol, permisos de páginas, búsqueda, móvil, creación de usuarios, cargas/retiros, banners y configuración. Genera capturas en `/tmp/nexora-*.png`. Usa solamente una base demo: crea un usuario, registra movimientos y elimina los banners de prueba.
+### Continuar con una base existente
+
+```sh
+npm install
+DATA_DIR=/ruta/de/la/base/existente SESSION_SECRET=valor-propio npm start
+```
+
+`npm start` no crea ni cambia cuentas demo. Se mantienen `universe.db`, usuarios, contraseñas, saldos, historial y banners. Las tablas faltantes se crean sin borrar las existentes. Los nombres predeterminados heredados PRISMA/NEXORA/VANTA/UNIVERSE GAME se presentan como BRAVO sin reescribir el valor almacenado; cualquier nombre personalizado se conserva. No se cambian permisos ni se resetean contraseñas existentes.
+
+## Panel y casino
+
+- Crear jugadores y personal según permisos; activar/bloquear usuarios.
+- Cargar/retirar fichas con validación de saldo e historial. Un jugador no puede llamar a las APIs administrativas.
+- Publicar, ordenar, ocultar y borrar banners PNG/JPG/WEBP/GIF hasta 1,5 MB. La portada incluye navegación manual entre banners.
+- Nombre, frase, anuncio, color de acento, categorías y mantenimiento guardados en SQLite.
+- Lobby de ancho completo con destacados asimétricos, 14 escenas SVG originales y formatos propios para slots, mesas y deportes.
+- Búsqueda de categorías, navegación inferior móvil, saldo, movimientos y salida visible. Las tarjetas informan que el catálogo está pendiente.
+
+El color configurable se aplica a indicadores y controles; las ilustraciones y campañas conservan su paleta. El catálogo y el saldo se refrescan al volver a la pestaña y cada 30 segundos.
+
+## Verificación reproducible
+
+```sh
+npm install --no-save playwright
+npx playwright install chromium
+npm test
+```
+
+Opcional: `CHROMIUM_PATH` para Chromium ya instalado, `TEST_PORT` para otro puerto y `EVIDENCE_DIR` para capturas. Las pruebas crean una base temporal aislada y levantan/cerran su propio servidor. No usan la base configurada del usuario.
+
+Cubren: portada con y sin sesión de ambos roles, login incorrecto/correcto, rutas protegidas y alias HTML codificados, cierre de sesión y bloqueo, protección del inicializador demo, creación de usuarios, cargas/retiros/saldo insuficiente, movimientos, banners, personalización, mantenimiento y vistas 360/390/768/1440 px sin errores JavaScript ni desbordes horizontales.

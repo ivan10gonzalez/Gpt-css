@@ -10,20 +10,42 @@ import helmet from 'helmet';
 const __filename=fileURLToPath(import.meta.url);const __dirname=path.dirname(__filename);const app=express();const PORT=process.env.PORT||3000;
 const dataDir=process.env.DATA_DIR||path.join(__dirname,'data');fs.mkdirSync(dataDir,{recursive:true});const db=new Database(path.join(dataDir,'universe.db'));db.pragma('journal_mode = WAL');
 db.exec(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('master','agent','player','cashier')),full_name TEXT NOT NULL,email TEXT DEFAULT '',balance INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,avatar_data TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,actor_id INTEGER,kind TEXT NOT NULL CHECK(kind IN ('credit','debit','adjustment')),amount INTEGER NOT NULL,note TEXT DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id);`);
-if(!db.prepare('SELECT COUNT(*) c FROM users').get().c){const i=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,balance) VALUES(?,?,?,?,?,?)');i.run('masteradmin',bcrypt.hashSync('demo1234',10),'master','Universe Master','master@universe.demo',0);i.run('agente01',bcrypt.hashSync('demo1234',10),'agent','Agente Demo','agent@universe.demo',250000);i.run('jugador01',bcrypt.hashSync('demo1234',10),'player','Jugador Demo','player@universe.demo',50000);i.run('cajero01',bcrypt.hashSync('demo1234',10),'cashier','Cajero Demo','cashier@universe.demo',100000);}
-app.use(helmet({contentSecurityPolicy:false}));app.use((q,s,n)=>{if(['POST','PUT','PATCH','DELETE'].includes(q.method)&&q.headers['sec-fetch-site']==='cross-site')return s.status(403).json({error:'Solicitud de otro sitio rechazada.'});n();});app.use(express.json({limit:'3mb'}));app.use(express.urlencoded({extended:true,limit:'3mb'}));app.use(session({secret:process.env.SESSION_SECRET||'prisma-demo-session',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:false,maxAge:28800000}}));// Gate HTML before static delivery; staff may preview the player lobby.
-app.use((req,res,next)=>{
- if(!['/player.html','/master.html'].includes(req.path))return next();
+app.use(helmet({contentSecurityPolicy:false}));app.use((q,s,n)=>{if(['POST','PUT','PATCH','DELETE'].includes(q.method)&&q.headers['sec-fetch-site']==='cross-site')return s.status(403).json({error:'Solicitud de otro sitio rechazada.'});n();});app.use(express.json({limit:'3mb'}));app.use(express.urlencoded({extended:true,limit:'3mb'}));app.use(session({secret:process.env.SESSION_SECRET||'prisma-demo-session',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:false,maxAge:28800000}}));// Resolve page access on the server, before serving static assets.
+// HTML and account responses must not be reused after logout or a role change.
+app.use((req,res,next)=>{if(req.path.startsWith('/api/'))res.set('Cache-Control','no-store');next()});
+const page=(res,file)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public',file))};
+const destination=u=>u.role==='player'?'/casino':'/admin';
+app.get(['/', '/index.html'],(_req,res)=>page(res,'index.html'));
+app.get(['/login','/login.html'],(_req,res)=>page(res,'index.html'));
+app.get(['/casino','/player','/player.html'],(req,res)=>{
  const u=currentUser(req);
- if(!u||!u.active)return res.redirect('/');
- if(req.path==='/master.html'&&u.role==='player')return res.redirect('/player.html');
+ if(!u?.active)return res.redirect('/login');
+ if(u.role!=='player')return res.redirect('/admin');
+ page(res,'player.html');
+});
+app.get(['/admin','/master','/master.html'],(req,res)=>{
+ const u=currentUser(req);
+ if(!u?.active)return res.redirect('/login');
+ if(u.role==='player')return res.redirect('/casino');
+ page(res,'master.html');
+});
+app.get('/preview',(req,res)=>{
+ const u=currentUser(req);
+ if(!u?.active)return res.redirect('/login');
+ if(u.role==='player')return res.redirect('/casino');
+ page(res,'player.html');
+});
+// Never expose an HTML file through static URL decoding or directory aliases.
+app.use((req,res,next)=>{
+ let pathname;try{pathname=decodeURIComponent(req.path)}catch{return res.sendStatus(400)}
+ if(/\.html(?:\/|$)/i.test(pathname))return res.sendStatus(404);
  next();
 });
-app.use(express.static(path.join(__dirname,'public')));
+app.use(express.static(path.join(__dirname,'public'),{index:false,redirect:false}));
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:1536000},fileFilter:(_r,f,cb)=>cb(null,/^image\/(png|jpe?g|webp|gif)$/i.test(f.mimetype))});
 const currentUser=req=>req.session.userId?db.prepare('SELECT id,username,role,full_name,email,balance,active,avatar_data,created_at FROM users WHERE id=?').get(req.session.userId):null;const auth=(req,res,next)=>{const u=currentUser(req);if(!u||!u.active)return res.status(401).json({error:'No autenticado.'});req.user=u;next()};const staff=(req,res,next)=>auth(req,res,()=>['master','agent','cashier'].includes(req.user.role)?next():res.status(403).json({error:'Sin permisos.'}));const amount=v=>{const n=Number(v);if(!Number.isInteger(n)||n<=0||n>1000000000)throw Error('Monto inválido.');return n};
-app.get('/api/health',(_q,s)=>s.json({ok:true,service:'prisma-virtual-casino'}));app.get('/api/session',(q,s)=>s.json({user:currentUser(q)?.active?currentUser(q):null}));
-app.post('/api/login',(q,s)=>{const {username='',password=''}=q.body||{};const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());if(!u||!u.active||!bcrypt.compareSync(String(password),u.password_hash))return s.status(401).json({error:'Usuario o contraseña incorrectos.'});q.session.regenerate(err=>{if(err)return s.status(500).json({error:'No se pudo iniciar la sesión.'});q.session.userId=u.id;s.json({ok:true,redirect:u.role==='player'?'/player.html':'/master.html',user:currentUser(q)});});});app.post('/api/logout',(q,s)=>q.session.destroy(()=>s.json({ok:true})));
+app.get('/api/health',(_q,s)=>s.json({ok:true,service:'bravo-virtual-casino'}));app.get('/api/session',(q,s)=>s.json({user:currentUser(q)?.active?currentUser(q):null}));
+app.post('/api/login',(q,s)=>{const {username='',password=''}=q.body||{};const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());if(!u||!u.active||!bcrypt.compareSync(String(password),u.password_hash))return s.status(401).json({error:'Usuario o contraseña incorrectos.'});q.session.regenerate(err=>{if(err)return s.status(500).json({error:'No se pudo iniciar la sesión.'});q.session.userId=u.id;s.json({ok:true,redirect:destination(u),user:currentUser(q)});});});app.post('/api/logout',(q,s)=>q.session.destroy(err=>{if(err)return s.status(500).json({error:'No se pudo cerrar la sesión.'});s.clearCookie('connect.sid',{path:'/'});s.json({ok:true})}));
 app.get('/api/stats',staff,(q,s)=>{const players=db.prepare("SELECT COUNT(*) c FROM users WHERE role='player'").get().c;const agents=db.prepare("SELECT COUNT(*) c FROM users WHERE role='agent'").get().c;const cashiers=db.prepare("SELECT COUNT(*) c FROM users WHERE role='cashier'").get().c;const active=db.prepare("SELECT COUNT(*) c FROM users WHERE active=1 AND role IN ('player','agent','cashier')").get().c;const volume=db.prepare("SELECT COALESCE(SUM(CASE WHEN kind='credit' THEN amount WHEN kind='debit' THEN -amount ELSE 0 END),0) v FROM ledger").get().v;s.json({players,agents,cashiers,active,ledgerVolume:volume});});
 app.get('/api/users',staff,(q,s)=>s.json({users:db.prepare("SELECT id,username,role,full_name,email,balance,active,avatar_data,created_at FROM users WHERE role!='master' ORDER BY id DESC").all()}));
 app.post('/api/users',staff,upload.single('avatar'),(q,s)=>{const {username,password,role='player',full_name,email=''}=q.body;if(q.user.role!=='master'&&role!=='player')return s.status(403).json({error:'Solo administración puede crear personal.'});if(!['player','agent','cashier'].includes(role))return s.status(400).json({error:'Rol inválido.'});if(!username||!password||!full_name)return s.status(400).json({error:'Completá usuario, contraseña y nombre.'});try{const avatar=q.file?`data:${q.file.mimetype};base64,${q.file.buffer.toString('base64')}`:'';const x=db.prepare('INSERT INTO users(username,password_hash,role,full_name,email,avatar_data) VALUES(?,?,?,?,?,?)').run(String(username).trim(),bcrypt.hashSync(String(password),10),role,String(full_name).trim(),String(email).trim(),avatar);s.json({ok:true,id:x.lastInsertRowid});}catch(e){s.status(400).json({error:e.message.includes('UNIQUE')?'Ese usuario ya existe.':'No se pudo crear el usuario.'});}});
@@ -32,9 +54,9 @@ app.post('/api/wallet/transfer',staff,(q,s)=>{try{const userId=Number(q.body.use
 app.get('/api/ledger',staff,(q,s)=>s.json({ledger:db.prepare('SELECT l.id,l.kind,l.amount,l.note,l.created_at,u.username,u.full_name FROM ledger l JOIN users u ON u.id=l.user_id ORDER BY l.id DESC LIMIT 100').all()}));app.get('/api/me/ledger',auth,(q,s)=>s.json({ledger:db.prepare('SELECT id,kind,amount,note,created_at FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 50').all(q.user.id)}));
 // Persistent presentation settings; the existing users and ledger are preserved.
 db.exec(`CREATE TABLE IF NOT EXISTS site_settings(id INTEGER PRIMARY KEY CHECK(id=1),content TEXT NOT NULL); CREATE TABLE IF NOT EXISTS banners(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,subtitle TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT 'all',image TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,position INTEGER NOT NULL DEFAULT 0);`);
-const defaults={name:'NEXORA',tagline:'Elegí tu mundo. Descubrí una experiencia llena de color y nuevas posibilidades.',accent:'#beff58',maintenance:false,categories:{casino:true,live:true,sports:true},announcement:'Un universo de entretenimiento. Todos los saldos son virtuales.'};
+const defaults={name:'BRAVO',tagline:'Elegí tu mundo. Descubrí una experiencia llena de color y nuevas posibilidades.',accent:'#ff763f',maintenance:false,categories:{casino:true,live:true,sports:true},announcement:'Un universo de entretenimiento. Todos los saldos son virtuales.'};
 db.prepare('INSERT OR IGNORE INTO site_settings(id,content) VALUES(1,?)').run(JSON.stringify(defaults));
-const settings=()=>JSON.parse(db.prepare('SELECT content FROM site_settings WHERE id=1').get().content);
+const settings=()=>{const saved=JSON.parse(db.prepare('SELECT content FROM site_settings WHERE id=1').get().content);return {...saved,name:['PRISMA','NEXORA','VANTA','UNIVERSE GAME'].includes(String(saved.name).toUpperCase())?'BRAVO':saved.name}};
 const master=(q,s,n)=>auth(q,s,()=>q.user.role==='master'?n():s.status(403).json({error:'Solo administración puede modificar el sitio.'}));
 app.get('/api/site',(_q,s)=>s.json({settings:settings(),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY position,id DESC').all()}));
 app.put('/api/site',master,(q,s)=>{const b=q.body;if(typeof b.name!=='string'||!b.name.trim()||b.name.length>24||!/^#[0-9a-f]{6}$/i.test(b.accent||'')||typeof b.maintenance!=='boolean'||!['casino','live','sports'].every(k=>typeof b.categories?.[k]==='boolean'))return s.status(400).json({error:'Revisá nombre, color y categorías.'});const v={name:b.name.trim(),tagline:String(b.tagline||'').slice(0,100),announcement:String(b.announcement||'').slice(0,200),accent:b.accent,maintenance:b.maintenance,categories:b.categories};db.prepare('UPDATE site_settings SET content=? WHERE id=1').run(JSON.stringify(v));s.json({ok:true,settings:v});});
@@ -45,5 +67,5 @@ app.patch('/api/banners/:id',master,(q,s)=>{if(typeof q.body.active!=='boolean'|
 app.delete('/api/banners/:id',master,(q,s)=>{const r=db.prepare('DELETE FROM banners WHERE id=?').run(q.params.id);s.status(r.changes?200:404).json(r.changes?{ok:true}:{error:'Banner no encontrado.'});});
 app.use((err,_q,s,_n)=>{console.error(err.message);s.status(err.code==='LIMIT_FILE_SIZE'?413:400).json({error:err.code==='LIMIT_FILE_SIZE'?'La imagen supera 1,5 MB.':'No se pudo procesar la solicitud.'});});
 
-app.use((q,s,n)=>q.path.startsWith('/api/')?s.status(404).json({error:'Ruta API no encontrada.'}):s.sendFile(path.join(__dirname,'public','index.html'),e=>e&&n(e)));app.listen(PORT,'0.0.0.0',()=>console.log(`Prisma running on ${PORT}`));
+app.use((q,s,n)=>q.path.startsWith('/api/')?s.status(404).json({error:'Ruta API no encontrada.'}):s.redirect('/'));app.listen(PORT,'0.0.0.0',()=>console.log(`BRAVO running on ${PORT}`));
 
