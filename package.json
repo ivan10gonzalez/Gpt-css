@@ -1,10 +1,13 @@
 {
-  "name": "prisma-virtual-casino",
+  "name": "bravo-virtual-casino",
   "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "demo": "node scripts/start-demo.mjs",
+    "test": "node tests/acceptance.mjs"
   },
   "engines": {
     "node": "24.14.1"

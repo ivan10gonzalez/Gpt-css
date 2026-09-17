@@ -1,0 +1,8 @@
+const form=document.getElementById('accessForm'),error=document.getElementById('accessError'),submit=document.getElementById('submitAccess');
+// The entry page always remains a login, even when a session already exists.
+fetch('/api/session',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.user?.active){document.getElementById('sessionLabel').textContent='Sesión actual: '+d.user.username;document.getElementById('existingSession').hidden=false}}).catch(()=>{});
+fetch('/api/site').then(r=>r.json()).then(d=>{document.querySelectorAll('[data-brand]').forEach(x=>x.textContent=d.settings.name);document.title=d.settings.name+' · Ingresar'}).catch(()=>{});
+document.getElementById('closeExisting').onclick=async()=>{try{const r=await fetch('/api/logout',{method:'POST'});if(!r.ok)throw Error('No se pudo cerrar la sesión.');document.getElementById('existingSession').hidden=true;form.reset();document.getElementById('username').focus()}catch(e){error.textContent=e.message}};
+document.getElementById('showPassword').onclick=e=>{const p=form.elements.password,show=p.type==='password';p.type=show?'text':'password';e.target.textContent=show?'Ocultar':'Ver';e.target.setAttribute('aria-label',show?'Ocultar contraseña':'Mostrar contraseña')};
+form.onsubmit=async e=>{e.preventDefault();submit.disabled=true;error.textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))}),d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo ingresar.');location.assign(d.redirect)}catch(e){error.textContent=e.message||'No se pudo conectar. Intentá nuevamente.'}finally{submit.disabled=false}};
+window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
